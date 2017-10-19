@@ -22,7 +22,7 @@ var argv = minimist(process.argv.slice(2), {
     dir: 'd'
   },
   default: {
-    dir: '.'
+    dir: 'hugo-worker'
   }
 })
 
@@ -35,6 +35,7 @@ if (process.getuid() !== 0) {
 
 var indexLoaded = false
 var nspawn = null
+var losetup = null
 var storage = (!argv.ram && !argv.index) ? join(argv.dir, './archive') : require('random-access-memory')
 var archive = hyperdrive(storage, linuxImageKey, {
   createIfMissing: false,
@@ -50,6 +51,7 @@ var track = argv.index ? fs.createWriteStream(argv.index) : null
 var mirrored = join(argv.dir, './tmp')
 var mnt = join(argv.dir, './mnt')
 var mntWorker = join(argv.dir, './mntWorker')
+var workerPath = resolve(join(argv.dir, 'worker'))
 var writtenBlocks = pager(4096)
 var writtenBlocksWorker = pager(4096)
 var totalDownloaded = 0
@@ -110,6 +112,7 @@ mkdirp.sync(mirrored)
 try {
   mkdirp.sync(mnt)
   mkdirp.sync(mntWorker)
+  mkdirp.sync(workerPath)
 } catch (err) {
   // do nothing
 }
@@ -309,16 +312,16 @@ function checkIndex () {
 
 function check () {
   if (!indexLoaded) checkIndex()
-  if (nspawn) return
+  if (losetup || nspawn) return
   archive.stat(linuxImageFile, function (err, st) {
-    if (err || nspawn) return
+    if (err || losetup || nspawn) return
 
     archiveWorker.stat(hugoWorkerImageFile, function (err, st) {
-      if (err || nspawn) return
+      if (err || losetup || nspawn) return
 
       // Mount worker image on loopback device using losetup
       const workerFile = join(argv.dir, 'mntWorker', hugoWorkerImageFile)
-      const losetup = proc.spawn(
+      losetup = proc.spawn(
         'losetup',
         [
           '--find',
@@ -329,6 +332,8 @@ function check () {
       losetup.stdout.on('data', data => {
         workerLoopDevice = data.toString().split('\n')[0]
         console.log('Worker loop device:', workerLoopDevice)
+
+        if (nspawn) return
 
         var args = ['-i', join(mnt, linuxImageFile)]
         if (argv.boot) args.push('-b')
@@ -347,7 +352,6 @@ function check () {
         })
 
         process.removeListener('SIGINT', sigint)
-        const workerPath = resolve(join(argv.dir, 'worker'))
         args.push(`--bind=${workerLoopDevice}:/dev/loop0`)
         args.push(`--bind=${workerPath}:/mnt`)
         args.push(`--register=no`)
