@@ -2,7 +2,7 @@
 
 var fuse = require('fuse-bindings')
 var fs = require('fs')
-var join = require('path').join
+var { join, resolve } = require('path')
 var hyperdrive = require('hyperdrive')
 var hyperdiscovery = require('hyperdiscovery')
 var pager = require('memory-pager')
@@ -10,10 +10,13 @@ var minimist = require('minimist')
 var mkdirp = require('mkdirp')
 var proc = require('child_process')
 
+const linuxImageKey = 'a333d43e8c0bca5fbf53fcf076babc7ef62d4336fb3c96f5f1d72b4bb61b453b'
+const linuxImageFile = '/debian-jessie-with-node.img'
+const hugoWorkerImageKey = '227ff1974fa8abc8375471a7f0f6b2250eee1499f5bb09fe84cb3b8c6d718357'
+const hugoWorkerImageFile = '/worker.img'
+
 var argv = minimist(process.argv.slice(2), {
   alias: {
-    key: 'k',
-    image: 'i',
     boot: 'b',
     dir: 'd'
   },
@@ -24,11 +27,6 @@ var argv = minimist(process.argv.slice(2), {
 
 if (argv.dir !== '.') mkdirp.sync(argv.dir)
 
-if (!argv.image) {
-  console.error('--image or -i is required')
-  process.exit(1)
-}
-
 if (process.getuid() !== 0) {
   console.error('Need to be root')
   process.exit(2)
@@ -37,22 +35,28 @@ if (process.getuid() !== 0) {
 var indexLoaded = false
 var nspawn = null
 var storage = (!argv.ram && !argv.index) ? join(argv.dir, './archive') : require('random-access-memory')
-var archive = hyperdrive(storage, argv.key && argv.key.replace('dat://', ''), {
+var archive = hyperdrive(storage, linuxImageKey, {
+  createIfMissing: false,
+  sparse: true
+})
+var storageWorker = join(argv.dir, './archiveWorker')
+var archiveWorker = hyperdrive(storageWorker, hugoWorkerImageKey, {
   createIfMissing: false,
   sparse: true
 })
 
-if (argv.image[0] !== '/') argv.image = '/' + argv.image
-
 var track = argv.index ? fs.createWriteStream(argv.index) : null
 var mirrored = join(argv.dir, './tmp')
 var mnt = join(argv.dir, './mnt')
+var mntWorker = join(argv.dir, './mntWorker')
 var writtenBlocks = pager(4096)
+var writtenBlocksWorker = pager(4096)
 var totalDownloaded = 0
 var blocks = 0
 var lastBlocks = []
 
 var range = null
+var rangeWorker = null
 var bufferSize = parseInt(argv.buffer || 0, 10)
 
 archive.once('content', function () {
@@ -81,18 +85,51 @@ archive.on('ready', function () {
   hyperdiscovery(archive, {live: true})
 })
 
+archiveWorker.once('content', function () {
+  archiveWorker.content.allowPush = true
+  archiveWorker.content.on('download', function (index, data) {
+    if (rangeWorker) archiveWorker.content.undownload(rangeWorker)
+    if (bufferSize) {
+      rangeWorker = archiveWorker.content.download({
+        start: index,
+        end: Math.min(archive.content.length, index + bufferSize),
+        linear: true
+      })
+    }
+  })
+})
+
+archiveWorker.on('ready', function () {
+  hyperdiscovery(archiveWorker, {live: true})
+})
+
 process.on('SIGINT', sigint)
 
 mkdirp.sync(mirrored)
 try {
   mkdirp.sync(mnt)
+  mkdirp.sync(mntWorker)
 } catch (err) {
   // do nothing
 }
 
-unmount(mnt, mount)
+unmount(mnt, () => {
+  unmount(mntWorker, () => {
+    mount(mnt, archive, writtenBlocks, linuxImageFile, () => {
+      console.log('Linux image mounted')
+      mount(mntWorker, archiveWorker, writtenBlocksWorker, hugoWorkerImageFile, () => {
+        console.log('Worker image mounted')
+	check()
+	archive.metadata.on('remote-update', check)
+	archive.metadata.on('append', check)
+	archiveWorker.metadata.on('remote-update', check)
+	archiveWorker.metadata.on('append', check)
+      })
+    })
+  })
+})
 
-function mount () {
+function mount (mnt, archive, writtenBlocks, imageFile, cb) {
   fuse.mount(mnt, {
     readdir: function (path, cb) {
       if (isMirrored(path)) fs.readdir(mirrored + path, done)
@@ -166,7 +203,7 @@ function mount () {
       }
 
       function run (fd, buf, offset, len, pos, done) {
-        if (path === argv.image) {
+        if (path === imageFile) {
           var overflow = pos & 4095
           var page = (pos - overflow) / 4096
           var blk = writtenBlocks.get(page, true)
@@ -186,9 +223,7 @@ function mount () {
     }
   }, function (err) {
     if (err) throw err
-    check()
-    archive.metadata.on('remote-update', check)
-    archive.metadata.on('append', check)
+    cb()
   })
 }
 
@@ -227,7 +262,7 @@ function onstats () {
 }
 
 function checkIndex () {
-  archive.readFile(argv.image + '.index', function (_, buf) {
+  archive.readFile(linuxImageFile + '.index', function (_, buf) {
     if (!buf) return
     indexLoaded = true
 
@@ -274,32 +309,43 @@ function checkIndex () {
 function check () {
   if (!indexLoaded) checkIndex()
   if (nspawn) return
-  archive.stat(argv.image, function (err, st) {
+  archive.stat(linuxImageFile, function (err, st) {
     if (err || nspawn) return
 
-    var args = ['-i', join(mnt, argv.image)]
-    if (argv.boot) args.push('-b')
-    else if (argv.quiet !== false) args.push('-q')
-    if (argv.bind) args.push('--bind', argv.bind)
+    archiveWorker.stat(hugoWorkerImageFile, function (err, st) {
+      if (err || nspawn) return
 
-    Object.keys(argv).forEach(function (k) {
-      if (k.slice(0, 3) === 'sn-') {
-        args.push('--' + k.slice(3))
-        if (argv[k] !== true) args.push(argv[k])
-      }
-    })
+      var args = ['-i', join(mnt, linuxImageFile)]
+      if (argv.boot) args.push('-b')
+      else if (argv.quiet !== false) args.push('-q')
+      if (argv.bind) args.push('--bind', argv.bind)
 
-    argv._.forEach(function (a) {
-      args.push(a)
-    })
+      Object.keys(argv).forEach(function (k) {
+        if (k.slice(0, 3) === 'sn-') {
+          args.push('--' + k.slice(3))
+          if (argv[k] !== true) args.push(argv[k])
+        }
+      })
 
-    process.removeListener('SIGINT', sigint)
-    nspawn = proc.spawn('systemd-nspawn', args, {
-      stdio: 'inherit'
-    })
-    nspawn.on('exit', function (code) {
-      unmount(mnt, function () {
-        process.exit(code)
+      argv._.forEach(function (a) {
+        args.push(a)
+      })
+
+      process.removeListener('SIGINT', sigint)
+      const workerPath = resolve(join(argv.dir, 'worker'))
+      args.push(`--bind=${workerPath}:/mnt`)
+      args.push(`--bind=/dev/loop0:/dev/loop0`)
+      // args.push(`--bind=/dev/loop1:/dev/loop1`)
+      console.log('Jim: systemd-nspawn', args.join(' '))
+      nspawn = proc.spawn('systemd-nspawn', args, {
+        stdio: 'inherit'
+      })
+      nspawn.on('exit', function (code) {
+        unmount(mnt, function () {
+          unmount(mntWorker, function () {
+            process.exit(code)
+          })
+        })
       })
     })
   })

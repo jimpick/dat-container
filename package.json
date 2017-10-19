@@ -1,9 +1,9 @@
 {
-  "name": "dat-container",
+  "name": "dat-hugo-worker",
   "version": "0.0.4",
   "description": "Container runtime for Dat",
   "bin": {
-    "dat-container": "./bin.js"
+    "dat-hugo-worker": "./bin.js"
   },
   "dependencies": {
     "fuse-bindings": "^2.11.1",
