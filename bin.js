@@ -14,6 +14,7 @@ const linuxImageKey = 'a333d43e8c0bca5fbf53fcf076babc7ef62d4336fb3c96f5f1d72b4bb
 const linuxImageFile = '/debian-jessie-with-node.img'
 const hugoWorkerImageKey = '227ff1974fa8abc8375471a7f0f6b2250eee1499f5bb09fe84cb3b8c6d718357'
 const hugoWorkerImageFile = '/worker.img'
+let loopDevice
 
 var argv = minimist(process.argv.slice(2), {
   alias: {
@@ -119,11 +120,11 @@ unmount(mnt, () => {
       console.log('Linux image mounted')
       mount(mntWorker, archiveWorker, writtenBlocksWorker, hugoWorkerImageFile, () => {
         console.log('Worker image mounted')
-	check()
-	archive.metadata.on('remote-update', check)
-	archive.metadata.on('append', check)
-	archiveWorker.metadata.on('remote-update', check)
-	archiveWorker.metadata.on('append', check)
+        check()
+        archive.metadata.on('remote-update', check)
+        archive.metadata.on('append', check)
+        archiveWorker.metadata.on('remote-update', check)
+        archiveWorker.metadata.on('append', check)
       })
     })
   })
@@ -315,38 +316,70 @@ function check () {
     archiveWorker.stat(hugoWorkerImageFile, function (err, st) {
       if (err || nspawn) return
 
-      var args = ['-i', join(mnt, linuxImageFile)]
-      if (argv.boot) args.push('-b')
-      else if (argv.quiet !== false) args.push('-q')
-      if (argv.bind) args.push('--bind', argv.bind)
+      // Mount worker image on loopback device using losetup
+      const workerFile = join(argv.dir, 'mntWorker', hugoWorkerImageFile)
+      const losetup = proc.spawn(
+        'losetup',
+        [
+          '--find',
+          '--show',
+          workerFile
+        ]
+      )
+      losetup.stdout.on('data', data => {
+        workerLoopDevice = data.toString().split('\n')[0]
+        console.log('Worker loop device:', workerLoopDevice)
 
-      Object.keys(argv).forEach(function (k) {
-        if (k.slice(0, 3) === 'sn-') {
-          args.push('--' + k.slice(3))
-          if (argv[k] !== true) args.push(argv[k])
-        }
-      })
+        var args = ['-i', join(mnt, linuxImageFile)]
+        if (argv.boot) args.push('-b')
+        else if (argv.quiet !== false) args.push('-q')
+        if (argv.bind) args.push('--bind', argv.bind)
 
-      argv._.forEach(function (a) {
-        args.push(a)
-      })
+        Object.keys(argv).forEach(function (k) {
+          if (k.slice(0, 3) === 'sn-') {
+            args.push('--' + k.slice(3))
+            if (argv[k] !== true) args.push(argv[k])
+          }
+        })
 
-      process.removeListener('SIGINT', sigint)
-      const workerPath = resolve(join(argv.dir, 'worker'))
-      args.push(`--bind=${workerPath}:/mnt`)
-      args.push(`--bind=/dev/loop0:/dev/loop0`)
-      // args.push(`--bind=/dev/loop1:/dev/loop1`)
-      console.log('Jim: systemd-nspawn', args.join(' '))
-      nspawn = proc.spawn('systemd-nspawn', args, {
-        stdio: 'inherit'
-      })
-      nspawn.on('exit', function (code) {
-        unmount(mnt, function () {
-          unmount(mntWorker, function () {
-            process.exit(code)
+        argv._.forEach(function (a) {
+          args.push(a)
+        })
+
+        process.removeListener('SIGINT', sigint)
+        const workerPath = resolve(join(argv.dir, 'worker'))
+        args.push(`--bind=${workerLoopDevice}:/dev/loop0`)
+        args.push(`--bind=${workerPath}:/mnt`)
+        args.push(`--register=no`)
+        console.log('systemd-nspawn', args.join(' '))
+        nspawn = proc.spawn('systemd-nspawn', args, {
+          stdio: 'inherit'
+        })
+        nspawn.on('exit', function (code) {
+          console.log('Unmounting', mnt)
+          unmount(mnt, function () {
+            console.log('Deleting loop device', workerLoopDevice)
+            const losetupDelete = proc.spawn(
+              'losetup',
+              [
+                '-d',
+                workerLoopDevice
+              ]
+            )
+            losetupDelete.on('close', () => {
+              console.log('Unmounting', mntWorker)
+              unmount(mntWorker, function () {
+                process.exit(code)
+              })
+            })
           })
         })
       })
+      losetup.on('error', error => {
+        console.log('Error', error)
+        process.exit(1)
+      })
+
     })
   })
 
