@@ -6,13 +6,15 @@
     "dat-hugo-worker": "./bin.js"
   },
   "dependencies": {
+    "dat-node": "^3.5.3",
     "fuse-bindings": "^2.11.1",
     "hyperdiscovery": "^6.0.4",
     "hyperdrive": "^9.8.0",
     "memory-pager": "^1.0.3",
     "minimist": "^1.2.0",
     "mkdir": "0.0.2",
-    "random-access-memory": "^2.4.0"
+    "random-access-memory": "^2.4.0",
+    "rimraf": "^2.6.2"
   },
   "devDependencies": {},
   "repository": {

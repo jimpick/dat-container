@@ -5,15 +5,20 @@ var fs = require('fs')
 var { join, resolve } = require('path')
 var hyperdrive = require('hyperdrive')
 var hyperdiscovery = require('hyperdiscovery')
+var Dat = require('dat-node')
 var pager = require('memory-pager')
 var minimist = require('minimist')
 var mkdirp = require('mkdirp')
 var proc = require('child_process')
+var rimraf = require('rimraf')
 
 const linuxImageKey = 'a333d43e8c0bca5fbf53fcf076babc7ef62d4336fb3c96f5f1d72b4bb61b453b'
 const linuxImageFile = '/debian-jessie-with-node.img'
-const hugoWorkerImageKey = '227ff1974fa8abc8375471a7f0f6b2250eee1499f5bb09fe84cb3b8c6d718357'
+const hugoWorkerImageKey = '3bdedd400354870aa2e4529906fc48ae1150b43f7c99add8f1b395b898d95f47'
 const hugoWorkerImageFile = '/worker.img'
+const primerKey = '928839a120518291510ca23acdeee379866f99738b00f7dedc04d18e07c4bff8'
+const primerTarball = 'hugo-worker-build-with-hugo-smaller.tar.xz'
+
 let loopDevice
 
 var argv = minimist(process.argv.slice(2), {
@@ -26,8 +31,6 @@ var argv = minimist(process.argv.slice(2), {
   }
 })
 
-if (argv.dir !== '.') mkdirp.sync(argv.dir)
-
 if (process.getuid() !== 0) {
   console.error('Need to be root')
   process.exit(2)
@@ -37,15 +40,9 @@ var indexLoaded = false
 var nspawn = null
 var losetup = null
 var storage = (!argv.ram && !argv.index) ? join(argv.dir, './archive') : require('random-access-memory')
-var archive = hyperdrive(storage, linuxImageKey, {
-  createIfMissing: false,
-  sparse: true
-})
+var archive
 var storageWorker = join(argv.dir, './archiveWorker')
-var archiveWorker = hyperdrive(storageWorker, hugoWorkerImageKey, {
-  createIfMissing: false,
-  sparse: true
-})
+var archiveWorker
 
 var track = argv.index ? fs.createWriteStream(argv.index) : null
 var mirrored = join(argv.dir, './tmp')
@@ -62,76 +59,8 @@ var range = null
 var rangeWorker = null
 var bufferSize = parseInt(argv.buffer || 0, 10)
 
-archive.once('content', function () {
-  archive.content.allowPush = true
-  archive.content.on('download', function (index, data) {
-    if (track) track.write('' + index + '\n')
-    if (range) archive.content.undownload(range)
-    if (bufferSize) {
-      range = archive.content.download({
-        start: index,
-        end: Math.min(archive.content.length, index + bufferSize),
-        linear: true
-      })
-    }
-
-    totalDownloaded += data.length
-    blocks++
-    lastBlocks.push(index)
-    if (lastBlocks.length > 5) lastBlocks.shift()
-  })
-})
-
-if (argv.stats) onstats()
-
-archive.on('ready', function () {
-  hyperdiscovery(archive, {live: true})
-})
-
-archiveWorker.once('content', function () {
-  archiveWorker.content.allowPush = true
-  archiveWorker.content.on('download', function (index, data) {
-    if (rangeWorker) archiveWorker.content.undownload(rangeWorker)
-    if (bufferSize) {
-      rangeWorker = archiveWorker.content.download({
-        start: index,
-        end: Math.min(archive.content.length, index + bufferSize),
-        linear: true
-      })
-    }
-  })
-})
-
-archiveWorker.on('ready', function () {
-  hyperdiscovery(archiveWorker, {live: true})
-})
-
 process.on('SIGINT', sigint)
 
-mkdirp.sync(mirrored)
-try {
-  mkdirp.sync(mnt)
-  mkdirp.sync(mntWorker)
-  mkdirp.sync(workerPath)
-} catch (err) {
-  // do nothing
-}
-
-unmount(mnt, () => {
-  unmount(mntWorker, () => {
-    mount(mnt, archive, writtenBlocks, linuxImageFile, () => {
-      console.log('Linux image mounted')
-      mount(mntWorker, archiveWorker, writtenBlocksWorker, hugoWorkerImageFile, () => {
-        console.log('Worker image mounted')
-        check()
-        archive.metadata.on('remote-update', check)
-        archive.metadata.on('append', check)
-        archiveWorker.metadata.on('remote-update', check)
-        archiveWorker.metadata.on('append', check)
-      })
-    })
-  })
-})
 
 function mount (mnt, archive, writtenBlocks, imageFile, cb) {
   fuse.mount(mnt, {
@@ -339,6 +268,9 @@ function check () {
         if (argv.boot) args.push('-b')
         else if (argv.quiet !== false) args.push('-q')
         if (argv.bind) args.push('--bind', argv.bind)
+        args.push(`--bind=${workerLoopDevice}:/dev/loop0`)
+        args.push(`--bind=${workerPath}:/mnt`)
+        args.push(`--register=no`)
 
         Object.keys(argv).forEach(function (k) {
           if (k.slice(0, 3) === 'sn-') {
@@ -352,9 +284,6 @@ function check () {
         })
 
         process.removeListener('SIGINT', sigint)
-        args.push(`--bind=${workerLoopDevice}:/dev/loop0`)
-        args.push(`--bind=${workerPath}:/mnt`)
-        args.push(`--register=no`)
         console.log('systemd-nspawn', args.join(' '))
         nspawn = proc.spawn('systemd-nspawn', args, {
           stdio: 'inherit'
@@ -392,3 +321,128 @@ function check () {
 function unmount (mnt, cb) {
   proc.spawn('umount', ['-f', mnt]).on('exit', cb)
 }
+
+function downloadPrimer(primerDir) {
+  const promise = new Promise((resolve, reject) => {
+    console.log('Downloading primer...')
+    Dat(primerDir, { key: primerKey }, (err, dat) => {
+      if (err) {
+        return reject(err)
+      }
+      const network = dat.joinNetwork()
+      network.once('connection', function () {
+        console.log('Connected')
+      })
+      dat.joinNetwork()
+      dat.archive.metadata.update(() => {
+        dat.archive.download(() => {
+          console.log('Primer downloaded.')
+          dat.leaveNetwork()
+          resolve()
+        })
+      })
+    })
+  })
+  return promise
+}
+
+function startVirtualMachine () {
+  const promise = new Promise((resolve, reject) => {
+    archive = hyperdrive(storage, linuxImageKey, {
+      createIfMissing: false,
+      sparse: true
+    })
+    archiveWorker = hyperdrive(storageWorker, hugoWorkerImageKey, {
+      createIfMissing: false,
+      sparse: true
+    })
+    archive.once('content', function () {
+      archive.content.allowpush = true
+      archive.content.on('download', function (index, data) {
+        if (track) track.write('' + index + '\n')
+        if (range) archive.content.undownload(range)
+        if (buffersize) {
+          range = archive.content.download({
+            start: index,
+            end: Math.min(archive.content.length, index + bufferSize),
+            linear: true
+          })
+        }
+
+        totalDownloaded += data.length
+        blocks++
+        lastBlocks.push(index)
+        if (lastBlocks.length > 5) lastBlocks.shift()
+      })
+    })
+
+    if (argv.stats) onstats()
+
+    archive.on('ready', function () {
+      hyperdiscovery(archive, {live: true})
+    })
+
+    archiveWorker.once('content', function () {
+      archiveWorker.content.allowPush = true
+      archiveWorker.content.on('download', function (index, data) {
+        if (rangeWorker) archiveWorker.content.undownload(rangeWorker)
+        if (bufferSize) {
+          rangeWorker = archiveWorker.content.download({
+            start: index,
+            end: Math.min(archive.content.length, index + bufferSize),
+            linear: true
+          })
+        }
+      })
+    })
+
+    archiveWorker.on('ready', function () {
+      hyperdiscovery(archiveWorker, {live: true})
+    })
+
+    unmount(mnt, () => {
+      unmount(mntWorker, () => {
+        mount(mnt, archive, writtenBlocks, linuxImageFile, () => {
+          console.log('Linux image mounted')
+          mount(mntWorker, archiveWorker, writtenBlocksWorker, hugoWorkerImageFile, () => {
+            console.log('Worker image mounted')
+            check()
+            archive.metadata.on('remote-update', check)
+            archive.metadata.on('append', check)
+            archiveWorker.metadata.on('remote-update', check)
+            archiveWorker.metadata.on('append', check)
+          })
+        })
+      })
+    })
+  })
+  return promise
+}
+
+async function run () {
+
+  if (!fs.existsSync(argv.dir)) {
+    if (argv.dir !== '.') {
+      const primerDir = join(argv.dir, 'primer')
+      mkdirp.sync(primerDir)
+      await downloadPrimer(primerDir)
+      console.log('Unpacking primer')
+      proc.execSync(`tar xf ${primerDir}/${primerTarball} hugo-worker -C ${argv.dir}`)
+      rimraf.sync(primerDir)
+    }
+  }
+
+  mkdirp.sync(mirrored)
+  try {
+    mkdirp.sync(mnt)
+    mkdirp.sync(mntWorker)
+    mkdirp.sync(workerPath)
+  } catch (err) {
+    // do nothing
+  }
+  await startVirtualMachine()
+
+}
+
+run()
+
