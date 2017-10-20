@@ -361,7 +361,7 @@ function startVirtualMachine () {
       archive.content.on('download', function (index, data) {
         if (track) track.write('' + index + '\n')
         if (range) archive.content.undownload(range)
-        if (buffersize) {
+        if (bufferSize) {
           range = archive.content.download({
             start: index,
             end: Math.min(archive.content.length, index + bufferSize),
