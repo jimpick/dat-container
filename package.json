@@ -1,7 +1,7 @@
 {
   "name": "dat-hugo-worker",
-  "version": "0.0.4",
-  "description": "Container runtime for Dat",
+  "version": "0.0.1",
+  "description": "Worker for running Hugo builds from Dat sources"
   "bin": {
     "dat-hugo-worker": "./bin.js"
   },
@@ -19,12 +19,12 @@
   "devDependencies": {},
   "repository": {
     "type": "git",
-    "url": "https://github.com/mafintosh/dat-container.git"
+    "url": "https://github.com/jimpick/dat-hugo-worker.git"
   },
-  "author": "Mathias Buus (@mafintosh)",
+  "author": "Jim Pick (@jimpick)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/mafintosh/dat-container/issues"
+    "url": "https://github.com/jimpick/dat-hugo-worker/issues"
   },
-  "homepage": "https://github.com/mafintosh/dat-container"
+  "homepage": "https://github.com/jimpick/dat-hugo-worker/dat-container"
 }
