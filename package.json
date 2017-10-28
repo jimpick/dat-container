@@ -1,16 +1,16 @@
 {
   "name": "dat-hugo-worker",
-  "version": "0.0.2",
+  "version": "0.0.5",
   "description": "Worker for running Hugo builds from Dat sources",
   "bin": {
     "dat-hugo-worker": "./bin.js"
   },
   "dependencies": {
-    "dat-node": "^3.5.3",
-    "fuse-bindings": "^2.11.1",
-    "hyperdiscovery": "^6.0.4",
-    "hyperdrive": "^9.8.0",
-    "memory-pager": "^1.0.3",
+    "dat-node": "^3.5.4",
+    "fuse-bindings": "^2.11.2",
+    "hyperdiscovery": "^7.0.0",
+    "hyperdrive": "^9.9.2",
+    "memory-pager": "^1.1.0",
     "minimist": "^1.2.0",
     "mkdir": "0.0.2",
     "random-access-memory": "^2.4.0",

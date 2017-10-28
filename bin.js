@@ -249,13 +249,17 @@ function check () {
       if (err || losetup || nspawn) return
 
       // Mount worker image on loopback device using losetup
-      const workerFile = join(argv.dir, 'mntWorker', hugoWorkerImageFile)
+      let workerImage = join(argv.dir, 'mntWorker', hugoWorkerImageFile)
+      if (argv['worker-image']) {
+        console.log('Using override worker image:', argv['worker-image'])
+        workerImage = argv['worker-image']
+      }
       losetup = proc.spawn(
         'losetup',
         [
           '--find',
           '--show',
-          workerFile
+          workerImage
         ]
       )
       losetup.stdout.on('data', data => {
@@ -264,7 +268,13 @@ function check () {
 
         if (nspawn) return
 
-        var args = ['-i', join(mnt, linuxImageFile)]
+        let linuxImage = join(mnt, linuxImageFile)
+        if (argv['linux-image']) {
+          console.log('Using override linux image:', argv['linux-image'])
+          linuxImage = argv['linux-image']
+        }
+
+        var args = ['-i', linuxImage]
         if (argv.boot) args.push('-b')
         else if (argv.quiet !== false) args.push('-q')
         if (argv.bind) args.push('--bind', argv.bind)
