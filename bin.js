@@ -26,8 +26,14 @@ var argv = minimist(process.argv.slice(2), {
     boot: 'b',
     dir: 'd'
   },
+  boolean: [
+    'subscribe',
+    'dat-share'
+  ],
   default: {
-    dir: 'hugo-worker'
+    dir: 'hugo-worker',
+    subscribe: true,
+    'dat-share': true
   }
 })
 
@@ -289,9 +295,28 @@ function check () {
           }
         })
 
-        argv._.forEach(function (a) {
-          args.push(a)
-        })
+        let workerArgs = []
+        if (!argv.subscribe) {
+          workerArgs.push('--no-subscribe')
+        }
+        if (!argv['dat-share']) {
+          workerArgs.push('--no-dat-share')
+        }
+        workerArgs = workerArgs.concat(argv._)
+        const startScript = `#! /bin/bash
+set -e
+mount /dev/loop0 /home/worker
+su -l worker -c '
+cd /home/worker/dat-subscribe-worker
+node index.js ${workerArgs.join(' ')}
+'
+`
+        console.log('Worker args:', workerArgs.join(' '))
+        fs.writeFileSync(`${argv.dir}/worker/start.sh`, startScript)
+
+        let workerImage = join(argv.dir, 'mntWorker', hugoWorkerImageFile)
+        args.push('bash')
+        args.push('/mnt/start.sh')
 
         process.removeListener('SIGINT', sigint)
         console.log('systemd-nspawn', args.join(' '))
