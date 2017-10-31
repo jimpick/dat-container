@@ -468,13 +468,10 @@ async function run () {
   }
 
   mkdirp.sync(mirrored)
-  try {
-    mkdirp.sync(mnt)
-    mkdirp.sync(mntWorker)
-    mkdirp.sync(workerPath)
-  } catch (err) {
-    // do nothing
-  }
+  mkdirp.sync(mnt)
+  mkdirp.sync(mntWorker)
+  mkdirp.sync(workerPath)
+  fs.chmodSync(workerPath, 0777)
   await startVirtualMachine()
 
 }
