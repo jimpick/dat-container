@@ -12,9 +12,9 @@ var mkdirp = require('mkdirp')
 var proc = require('child_process')
 var rimraf = require('rimraf')
 
-const linuxImageKey = 'a333d43e8c0bca5fbf53fcf076babc7ef62d4336fb3c96f5f1d72b4bb61b453b'
+const linuxImageKey = '64142950c48086928090f1e319f9a7b40faa79219c0a14a89c0671cfdcaf1b01'
 const linuxImageFile = '/debian-jessie-with-node.img'
-const hugoWorkerImageKey = '3bdedd400354870aa2e4529906fc48ae1150b43f7c99add8f1b395b898d95f47'
+const hugoWorkerImageKey = 'b555cda8b9e3a1865fa4a04ef40afa059f7131bd03051cbf63c62a085ec4169c'
 const hugoWorkerImageFile = '/worker.img'
 const primerKey = '928839a120518291510ca23acdeee379866f99738b00f7dedc04d18e07c4bff8'
 const primerTarball = 'hugo-worker-build-with-hugo-smaller.tar.xz'
