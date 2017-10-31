@@ -1,6 +1,6 @@
 {
   "name": "dat-hugo-worker",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Worker for running Hugo builds from Dat sources",
   "bin": {
     "dat-hugo-worker": "./bin.js"

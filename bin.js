@@ -370,11 +370,13 @@ function downloadPrimer(primerDir) {
       })
       dat.joinNetwork()
       dat.archive.metadata.update(() => {
-        dat.archive.download(() => {
-          console.log('Primer downloaded.')
-          dat.leaveNetwork()
-          resolve()
-        })
+        setTimeout(() => {
+          dat.archive.download(() => {
+            console.log('Primer downloaded.')
+            dat.leaveNetwork()
+            resolve()
+          })
+        }, 1000)
       })
     })
   })
