@@ -1,71 +1,54 @@
-# dat-container
+# pipette-hugo-worker
 
-Container runtime for Dat
+"Pipette" is a blogging platform built on top of Dat, Beaker Browser, Netlify CMS and Hugo.
+
+# Install
 
 ```
-npm install -g dat-container
+npm install -g pipette-hugo-worker
 ```
 
-Requires systemd-nspawn and fuse installed.
+Requires systemd-nspawn and fuse installed on Linux.
+
+*(Detailed install instructions coming soon)*
+
+## Development Blog
+
+Pipette is under active development. Please follow the blog here:
+
+* https://pipette-dev-blog-jimpick.hashbase.io/
+* [dat://pipette-dev-blog-jimpick.hashbase.io/](dat://pipette-dev-blog-jimpick.hashbase.io/)
+
+Introduction to the project:
+
+* [Introducing Pipette](https://pipette-dev-blog-jimpick.hashbase.io/post/introducing-pipette/)
 
 ## Usage
 
-One a host (linux) machine allocate a sparse file, format it, mount it, and install a distro inside, and unmount it
-
 ``` sh
-# installing arch from arch
-fallocate -l 1000000000 arch.img
-mkfs.ext4 arch.img
-mkdir -p mnt
-sudo mount arch.img mnt
-sudo pacstrap mnt base
-sudo umount mnt
+# pipette-hugo-worker dat://d6185c1680001cd2260a0f31bfb209edbf97551774dc6175c110019d9020199d/
 ```
 
-You can now boot this image using systemd-nspawn using the following command to modify it more
+Replace the dat:// url with the address of a Dat archive containing the blog contents and configuration. (see below)
 
-``` sh
-sudo systemd-nspawn -i arch.img -b
-```
+This command will create a 'hugo-worker' subdirectory beneath the current directory. It will then download and spawn a lightweight virtual machine which will subscribe to the specified Dat archive, and then run the [Hugo](https://gohugo.io/) static site generator every time you create, edit or delete a blog post.
 
-When you are done add this image to a Dat (you can add more than one)
-and start sharing the Dat
+It will automatically create and share a new Dat archive containing the files for the generated static site. Look at the logs for a line that says `Static site url: dat://...` for the address.
 
-## Live booting the image using Dat
+Once you have the address, one thing you might want to do is to register it with [Hashbase](https://hashbase.io/) to get another peer and to automatically publish it to the conventional web via HTTPS.
 
-You are now ready to boot the image over Dat.
-On a guest machine simply install dat-container and run
+## Creating your own source Dat archive
 
-``` sh
-# do a full container boot
-sudo dat-container -i arch.img --key <dat-key-from-above> -b
-```
+To create a new source archive, you can use [Beaker Browser](https://beakerbrowser.com/) to fork the source "CMS" (Content Management System) for the development blog:
 
-That's it! The image will now live boot over the network!
+* [dat://d6185c1680001cd2260a0f31bfb209edbf97551774dc6175c110019d9020199d/](dat://d6185c1680001cd2260a0f31bfb209edbf97551774dc6175c110019d9020199d/)
 
-To run a single command (also live)
+Once you have forked it, you can erase the content and change the blog title and description in the Settings menu.
 
-```
-# run uname -a
-sudo dat-container -i arch.img --key <dat-key-from-above> -- uname -a
-```
 
-Any argument prefixed with `--sn-` is automatically forwarded to systemd-nspawn.
+## Acknowledgements
 
-## How can I help?
-
-This tool needs more cool options, features, and documentation.
-All help is appreciated.
-
-## Created files look big?
-
-Don't worry. All files are usually very sparse and small on disk even though
-they look like they take up gigabytes of space. To see the actual size run
-
-```
-# show actual blocks used on disk as the first column
-ls -shl
-```
+The starting point for this code was: https://github.com/mafintosh/dat-container
 
 ## License
 
