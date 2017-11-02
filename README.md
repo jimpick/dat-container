@@ -25,6 +25,8 @@ Introduction to the project:
 
 ## Usage
 
+**Note:** For now, Pipette needs to run as the root user as it needs to create a virtual machine using systemd-nspawn.
+
 ``` sh
 # pipette-hugo-worker dat://d6185c1680001cd2260a0f31bfb209edbf97551774dc6175c110019d9020199d/
 ```
