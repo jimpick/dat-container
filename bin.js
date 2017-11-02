@@ -16,8 +16,11 @@ const linuxImageKey = '64142950c48086928090f1e319f9a7b40faa79219c0a14a89c0671cfd
 const linuxImageFile = '/debian-jessie-with-node.img'
 const hugoWorkerImageKey = 'b555cda8b9e3a1865fa4a04ef40afa059f7131bd03051cbf63c62a085ec4169c'
 const hugoWorkerImageFile = '/worker.img'
-const primerKey = '928839a120518291510ca23acdeee379866f99738b00f7dedc04d18e07c4bff8'
-const primerTarball = 'hugo-worker-build-with-hugo-smaller.tar.xz'
+
+// const primerKey = '928839a120518291510ca23acdeee379866f99738b00f7dedc04d18e07c4bff8'
+// const primerTarball = 'hugo-worker-build-with-hugo-smaller.tar.xz'
+const primerKey = 'fe8c2c7185948fe5636daaf9e7f9f0987934209714f023a8015494b749875f83'
+const primerTarball = 'hugo-worker-sparse.tar.gz'
 
 let loopDevice
 
