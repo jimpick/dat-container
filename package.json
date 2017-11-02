@@ -1,9 +1,9 @@
 {
   "name": "pipette-hugo-worker",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "Worker for running Hugo builds from Dat sources",
   "bin": {
-    "dat-hugo-worker": "./bin.js"
+    "pipette-hugo-worker": "./bin.js"
   },
   "dependencies": {
     "dat-node": "^3.5.5",
@@ -24,7 +24,7 @@
   "author": "Jim Pick (@jimpick)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/jimpick/dat-hugo-worker/issues"
+    "url": "https://github.com/jimpick/pipette-hugo-worker/issues"
   },
-  "homepage": "https://github.com/jimpick/dat-hugo-worker/dat-container"
+  "homepage": "https://github.com/jimpick/pipette-hugo-worker/"
 }
