@@ -263,16 +263,40 @@ function check () {
         console.log('Using override worker image:', argv['worker-image'])
         workerImage = argv['worker-image']
       }
-      losetup = proc.spawn(
-        'losetup',
-        [
-          '--find',
-          '--show',
-          workerImage
-        ]
-      )
+      // Figure out if we are using BusyBox losetup (eg. inside HyperOS)
+      let busyBox = true
+      try {
+        proc.execSync('losetup 2>&1 | grep -q BusyBox')
+      } catch (err) {
+        // The grep above should fail on a non-BusyBox system
+        busyBox = false
+      }
+      if (!busyBox) {
+        console.log('BusyBox detected!')
+      }
+      const args = []
+      let workerLoopDevice
+      if (busyBox) {
+        workerLoopDevice = '/dev/loop0'
+        args.push(workerLoopDevice)
+      } else {
+        args.push('--find')
+        args.push('--show')
+      }
+      args.push(workerImage)
+      losetup = proc.spawn('losetup', args)
       losetup.stdout.on('data', data => {
         workerLoopDevice = data.toString().split('\n')[0]
+      })
+      losetup.on('exit', code => {
+        if (code) {
+          console.error('losetup non-zero status', code)
+          process.exit(1)
+        }
+        if (!workerLoopDevice) {
+          console.error('Invalid workerLoopDevice')
+          process.exit(1)
+        }
         console.log('Worker loop device:', workerLoopDevice)
 
         if (nspawn) return
