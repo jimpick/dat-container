@@ -17,8 +17,6 @@ const linuxImageFile = '/debian-jessie-with-node.img'
 const hugoWorkerImageKey = 'b555cda8b9e3a1865fa4a04ef40afa059f7131bd03051cbf63c62a085ec4169c'
 const hugoWorkerImageFile = '/worker.img'
 
-// const primerKey = '928839a120518291510ca23acdeee379866f99738b00f7dedc04d18e07c4bff8'
-// const primerTarball = 'hugo-worker-build-with-hugo-smaller.tar.xz'
 const primerKey = 'fe8c2c7185948fe5636daaf9e7f9f0987934209714f023a8015494b749875f83'
 const primerTarball = 'hugo-worker-sparse.tar.xz'
 
@@ -43,6 +41,18 @@ var argv = minimist(process.argv.slice(2), {
 if (process.getuid() !== 0) {
   console.error('Need to be root')
   process.exit(2)
+}
+
+// Figure out if we are using BusyBox losetup (eg. inside HyperOS)
+let busyBox = true
+try {
+  proc.execSync('losetup 2>&1 | grep -q BusyBox')
+} catch (err) {
+  // The grep above should fail on a non-BusyBox system
+  busyBox = false
+}
+if (busyBox) {
+  console.log('BusyBox detected!')
 }
 
 var indexLoaded = false
@@ -263,17 +273,6 @@ function check () {
         console.log('Using override worker image:', argv['worker-image'])
         workerImage = argv['worker-image']
       }
-      // Figure out if we are using BusyBox losetup (eg. inside HyperOS)
-      let busyBox = true
-      try {
-        proc.execSync('losetup 2>&1 | grep -q BusyBox')
-      } catch (err) {
-        // The grep above should fail on a non-BusyBox system
-        busyBox = false
-      }
-      if (!busyBox) {
-        console.log('BusyBox detected!')
-      }
       const args = []
       let workerLoopDevice
       if (busyBox) {
@@ -493,10 +492,18 @@ async function run () {
       mkdirp.sync(primerDir)
       await downloadPrimer(primerDir)
       console.log('Unpacking primer')
-      fs.chmodSync(`${primerDir}/xz`, 0755)
-      fs.chmodSync(`${primerDir}/tar`, 0755)
-      const cmd = `cat ${primerDir}/${primerTarball} | ${primerDir}/xz -d | ${primerDir}/tar xf - hugo-worker -C ${argv.dir}`
-      console.log(cmd)
+      let cmd
+      if (busyBox) {
+        fs.chmodSync(`${primerDir}/xz`, 0755)
+        fs.chmodSync(`${primerDir}/tar`, 0755)
+        cmd = `cat ${primerDir}/${primerTarball} | ` +
+          `${primerDir}/xz -d | ` +
+          `${primerDir}/tar xf - hugo-worker -C ${argv.dir}`
+      } else {
+        cmd = `tar xf ${primerDir}/${primerTarball} ` +
+          `hugo-worker -C ${argv.dir}`
+      }
+      // console.log(cmd)
       proc.execSync(cmd)
       rimraf.sync(primerDir)
     }
