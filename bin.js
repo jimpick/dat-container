@@ -20,7 +20,7 @@ const hugoWorkerImageFile = '/worker.img'
 // const primerKey = '928839a120518291510ca23acdeee379866f99738b00f7dedc04d18e07c4bff8'
 // const primerTarball = 'hugo-worker-build-with-hugo-smaller.tar.xz'
 const primerKey = 'fe8c2c7185948fe5636daaf9e7f9f0987934209714f023a8015494b749875f83'
-const primerTarball = 'hugo-worker-sparse.tar.gz'
+const primerTarball = 'hugo-worker-sparse.tar.xz'
 
 let loopDevice
 
@@ -401,7 +401,9 @@ function downloadPrimer(primerDir) {
           dat.archive.download(() => {
             console.log('Primer downloaded.')
             dat.leaveNetwork()
-            resolve()
+            dat.close(() => {
+              resolve()
+            })
           })
         }, 1000)
       })
@@ -491,7 +493,11 @@ async function run () {
       mkdirp.sync(primerDir)
       await downloadPrimer(primerDir)
       console.log('Unpacking primer')
-      proc.execSync(`tar xf ${primerDir}/${primerTarball} hugo-worker -C ${argv.dir}`)
+      fs.chmodSync(`${primerDir}/xz`, 0755)
+      fs.chmodSync(`${primerDir}/tar`, 0755)
+      const cmd = `cat ${primerDir}/${primerTarball} | ${primerDir}/xz -d | ${primerDir}/tar xf - hugo-worker -C ${argv.dir}`
+      console.log(cmd)
+      proc.execSync(cmd)
       rimraf.sync(primerDir)
     }
   }
